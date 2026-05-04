@@ -1,0 +1,11 @@
+
+## Interface: 30300
+## Title: |cffabd473Epoch|cffffffffMail
+## Author: Fragglechen
+## Version: 1.0.0
+## Notes: Mailbox enhancement
+## X-SpecialThanks: shirsig/sica, original TurtleMail addon authors
+## SavedVariables: EpochMail_AutoCompleteNames
+## SavedVariablesPerCharacter: EpochMail_To EpochMail_Point EpochMail_Log
+
+EpochMail.xml
