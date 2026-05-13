@@ -38,7 +38,8 @@ local function migrate_autocomplete_names()
 end
 
 local function activate_wrath_bag_hooks()
-  if client < 30000 or m.wrath_bag_hooks_active then return end
+  if client >= 30000 then return end
+  if m.wrath_bag_hooks_active then return end
 
   for _, hook_name in ipairs( { "UseContainerItem", "ContainerFrameItemButton_OnClick", "PickupContainerItem", "SplitContainerItem", "GetContainerItemInfo" } ) do
     if m.hooks[ hook_name ] and m.orig[ hook_name ] then
@@ -50,7 +51,8 @@ local function activate_wrath_bag_hooks()
 end
 
 local function deactivate_wrath_bag_hooks()
-  if client < 30000 or not m.wrath_bag_hooks_active then return end
+  if client >= 30000 then return end
+  if not m.wrath_bag_hooks_active then return end
 
   for _, hook_name in ipairs( { "UseContainerItem", "ContainerFrameItemButton_OnClick", "PickupContainerItem", "SplitContainerItem", "GetContainerItemInfo" } ) do
     if m.orig[ hook_name ] then
@@ -70,7 +72,10 @@ local function send_mail_tab_active()
 end
 
 local function sync_wrath_bag_hooks()
-  if client < 30000 then return end
+  if client >= 30000 then
+    m.wrath_bag_hooks_active = false
+    return
+  end
   if send_mail_tab_active() then
     activate_wrath_bag_hooks()
   else
