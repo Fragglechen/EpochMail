@@ -842,7 +842,7 @@
 		</Anchors>
 		<Scripts>
 			<OnClick>
-				MailFrameTab_OnClick(self:GetID())
+				MailFrameTab_OnClick(self, self:GetID())
 			</OnClick>
 		</Scripts>
 	</Button>

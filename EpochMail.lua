@@ -4,6 +4,79 @@ L = EpochMail.L
 local m = EpochMail
 local getn = table.getn or function( t ) return t.n or #t end
 local function pack( ... ) return { n = select( "#", ... ), ... } end
+local _, _, _, client = GetBuildInfo()
+client = tonumber( client ) or 11200
+
+local function get_send_stationery_backgrounds()
+  return m.api.SendStationeryBackgroundLeft or m.api.StationeryBackgroundLeft,
+    m.api.SendStationeryBackgroundRight or m.api.StationeryBackgroundRight
+end
+
+local function get_autocomplete_key()
+  return tostring( m.api.GetCVar( "realmName" ) )
+end
+
+local function migrate_autocomplete_names()
+  local realm_key = get_autocomplete_key()
+  local realm_prefix = realm_key .. "|"
+  local merged = m.api.EpochMail_AutoCompleteNames[ realm_key ] or {}
+
+  for key, names in pairs( m.api.EpochMail_AutoCompleteNames ) do
+    if key == realm_key then
+      -- already in the merged table
+    elseif type( key ) == "string" and string.find( key, realm_prefix, 1, true ) == 1 and type( names ) == "table" then
+      for name, last_seen in pairs( names ) do
+        local current = merged[ name ]
+        if not current or current < last_seen then
+          merged[ name ] = last_seen
+        end
+      end
+    end
+  end
+
+  m.api.EpochMail_AutoCompleteNames[ realm_key ] = merged
+end
+
+local function activate_wrath_bag_hooks()
+  if client < 30000 or m.wrath_bag_hooks_active then return end
+
+  for _, hook_name in ipairs( { "UseContainerItem", "ContainerFrameItemButton_OnClick", "PickupContainerItem", "SplitContainerItem", "GetContainerItemInfo" } ) do
+    if m.hooks[ hook_name ] and m.orig[ hook_name ] then
+      m.api[ hook_name ] = m.hooks[ hook_name ]
+    end
+  end
+
+  m.wrath_bag_hooks_active = true
+end
+
+local function deactivate_wrath_bag_hooks()
+  if client < 30000 or not m.wrath_bag_hooks_active then return end
+
+  for _, hook_name in ipairs( { "UseContainerItem", "ContainerFrameItemButton_OnClick", "PickupContainerItem", "SplitContainerItem", "GetContainerItemInfo" } ) do
+    if m.orig[ hook_name ] then
+      m.api[ hook_name ] = m.orig[ hook_name ]
+    end
+  end
+
+  m.wrath_bag_hooks_active = false
+end
+
+local function send_mail_tab_active()
+  return m.api.MailFrame
+    and m.api.MailFrame:IsVisible()
+    and m.api.SendMailFrame
+    and m.api.SendMailFrame:IsVisible()
+    and not (m.api.EpochMailLogFrame and m.api.EpochMailLogFrame:IsVisible())
+end
+
+local function sync_wrath_bag_hooks()
+  if client < 30000 then return end
+  if send_mail_tab_active() then
+    activate_wrath_bag_hooks()
+  else
+    deactivate_wrath_bag_hooks()
+  end
+end
 
 local ATTACHMENTS_MAX = 21
 local ATTACHMENTS_PER_ROW_SEND = 7
@@ -174,6 +247,8 @@ function EpochMail.BAG_UPDATE()
 end
 
 function EpochMail.MAIL_SHOW()
+  sync_wrath_bag_hooks()
+
   if m.api.EpochMail_Point then
     m.debug( "Set point" )
     m.api.MailFrame:SetPoint( m.api.EpochMail_Point.point, m.api.EpochMail_Point.x, m.api.EpochMail_Point.y )
@@ -181,17 +256,20 @@ function EpochMail.MAIL_SHOW()
 
   if not m.first_show then
     m.first_show = true
-    if m.pfui_skin_enabled then
-      m.api.pfUI.api.StripTextures( m.api.SendMailPackageButton )
-    end
+    local package_button = m.api.SendMailPackageButton
+    if package_button then
+      if m.pfui_skin_enabled then
+        m.api.pfUI.api.StripTextures( package_button )
+      end
 
-    local background = ({ m.api.SendMailPackageButton:GetRegions() })[ 1 ]
-    background:Hide()
-    local count = ({ m.api.SendMailPackageButton:GetRegions() })[ 3 ]
-    count:Hide()
-    m.api.SendMailPackageButton:Disable()
-    m.api.SendMailPackageButton:SetScript( "OnReceiveDrag", nil )
-    m.api.SendMailPackageButton:SetScript( "OnDragStart", nil )
+      local background = ({ package_button:GetRegions() })[ 1 ]
+      if background then background:Hide() end
+      local count = ({ package_button:GetRegions() })[ 3 ]
+      if count then count:Hide() end
+      package_button:Disable()
+      package_button:SetScript( "OnReceiveDrag", nil )
+      package_button:SetScript( "OnDragStart", nil )
+    end
   end
 
   if m.log_enabled then
@@ -206,6 +284,7 @@ function EpochMail.MAIL_SHOW()
 end
 
 function EpochMail.MAIL_CLOSED()
+  deactivate_wrath_bag_hooks()
   m.inbox_abort()
   m.sendmail_sending = false
   m.sendmail_clear()
@@ -264,9 +343,14 @@ function EpochMail.PLAYER_LOGIN()
   m.debug( "PLAYER_LOGIN" )
   for k, v in pairs( m.hooks ) do
     m.orig[ k ] = m.api[ k ]
-    m.api[ k ] = v
+    if client >= 30000 and (k == "UseContainerItem" or k == "ContainerFrameItemButton_OnClick" or k == "PickupContainerItem" or k == "SplitContainerItem" or k == "GetContainerItemInfo") then
+      -- Replacing bag handlers on Wrath-based clients taints normal item use and spell-target flows.
+    else
+      m.api[ k ] = v
+    end
   end
-  local key = m.api.GetCVar( "realmName" ) .. "|" .. tostring(m.api.UnitFactionGroup( "player" ))
+  migrate_autocomplete_names()
+  local key = get_autocomplete_key()
   m.api.EpochMail_AutoCompleteNames[ key ] = m.api.EpochMail_AutoCompleteNames[ key ] or {}
   for char, last_seen in pairs( m.api.EpochMail_AutoCompleteNames[ key ] ) do
     if m.api.GetTime() - last_seen > 60 * 60 * 24 * 30 then
@@ -291,6 +375,8 @@ function EpochMail.MAIL_SEND_SUCCESS()
   end
   if m.sendmail_sending then
     m.sendmail_update = true
+  else
+    m.sendmail_clear()
   end
 end
 
@@ -319,7 +405,7 @@ end
 
 ---@param name string
 function EpochMail.add_auto_complete_name( name )
-  local key = m.api.GetCVar( "realmName" ) .. "|" .. tostring(m.api.UnitFactionGroup( "player" ))
+  local key = get_autocomplete_key()
   m.api.EpochMail_AutoCompleteNames[ key ][ name ] = m.api.GetTime()
 end
 
@@ -491,20 +577,31 @@ end
 
 ---@param i number
 function EpochMail.hook.InboxFrame_OnClick( i, button )
+  local inbox_index = i
+  if type( i ) == "table" and i.index then
+    inbox_index = i.index
+  end
   local clicked_button = button or m.api.arg1
-  local frame = m.api.this or m.api[ "MailItem" .. i .. "Button" ]
-  if m.inbox_opening or clicked_button == "RightButton" and ({ m.api.GetInboxHeaderInfo( i ) })[ 6 ] > 0 then
+  local frame = m.api.this or (type( i ) == "table" and i) or m.api[ "MailItem" .. inbox_index .. "Button" ]
+  if m.inbox_opening or clicked_button == "RightButton" and ({ m.api.GetInboxHeaderInfo( inbox_index ) })[ 6 ] > 0 then
     if frame then frame:SetChecked( nil ) end
   elseif clicked_button == "RightButton" then
-    m.inbox_open( i, true )
+    m.inbox_open( inbox_index, true )
   else
-    return m.orig.InboxFrame_OnClick( i )
+    if client >= 30000 and frame then
+      return m.orig.InboxFrame_OnClick( frame, inbox_index )
+    end
+    return m.orig.InboxFrame_OnClick( inbox_index )
   end
 end
 
 function EpochMail.hook.InboxFrameItem_OnEnter( frame )
   frame = frame or m.api.this
-  m.orig.InboxFrameItem_OnEnter()
+  if frame ~= nil then
+    m.orig.InboxFrameItem_OnEnter( frame )
+  else
+    m.orig.InboxFrameItem_OnEnter()
+  end
   if frame and m.api.GetInboxItem( frame.index ) then
     m.api.GameTooltip:AddLine( m.api.ITEM_OPENABLE, "", 0, 1, 0 )
     m.api.GameTooltip:Show()
@@ -606,12 +703,16 @@ function EpochMail.hook.SendMailFrame_Update()
   SendMailScrollFrameTop:SetHeight( scrollHeight )
   SendMailScrollFrameTop:SetTexCoord( 0, .484375, 0, scrollHeight / 256 )
 
-  m.api.StationeryBackgroundLeft:SetHeight( scrollHeight )
-  m.api.StationeryBackgroundLeft:SetTexCoord( 0, 1, 0, scrollHeight / 256 )
+  local stationery_left, stationery_right = get_send_stationery_backgrounds()
+  if stationery_left then
+    stationery_left:SetHeight( scrollHeight )
+    stationery_left:SetTexCoord( 0, 1, 0, scrollHeight / 256 )
+  end
 
-
-  m.api.StationeryBackgroundRight:SetHeight( scrollHeight )
-  m.api.StationeryBackgroundRight:SetTexCoord( 0, 1, 0, scrollHeight / 256 )
+  if stationery_right then
+    stationery_right:SetHeight( scrollHeight )
+    stationery_right:SetTexCoord( 0, 1, 0, scrollHeight / 256 )
+  end
 
   -- Set Items
   for i = 1, ATTACHMENTS_MAX do
@@ -676,24 +777,33 @@ function EpochMail.hook.SplitContainerItem( bag, slot, amount )
   return m.orig.SplitContainerItem( bag, slot, amount )
 end
 
-function EpochMail.hook.UseContainerItem( bag, slot, onself )
-  if m.sendmail_attached( bag, slot ) then return end
+local function handle_bag_right_click( bag, slot, onself )
+  if m.sendmail_attached( bag, slot ) then return true end
   if m.api.IsShiftKeyDown() or m.api.IsControlKeyDown() or m.api.IsAltKeyDown() then
-    return m.orig.UseContainerItem( bag, slot, onself )
-  elseif m.api.MailFrame:IsVisible() then
-    m.api.MailFrameTab_OnClick( 2 )
+    return false
+  elseif send_mail_tab_active() then
     m.sendmail_set_attachment( { bag, slot } )
+    return true
   elseif m.api.TradeFrame:IsVisible() then
     for i = 1, 6 do
       if not m.api.GetTradePlayerItemLink( i ) then
         m.orig.PickupContainerItem( bag, slot )
         m.api.ClickTradeButton( i )
-        return
+        return true
       end
     end
-  else
-    return m.orig.UseContainerItem( bag, slot, onself )
+    return true
   end
+
+  return false
+end
+
+function EpochMail.hook.UseContainerItem( bag, slot, onself )
+  if handle_bag_right_click( bag, slot, onself ) then
+    return
+  end
+
+  return m.orig.UseContainerItem( bag, slot, onself )
 end
 
 function EpochMail.hook.SendMailFrame_CanSend()
@@ -704,12 +814,24 @@ function EpochMail.hook.SendMailFrame_CanSend()
   end
 end
 
-function EpochMail.hook.MailFrameTab_OnClick( tab )
-  if not tab then
-    tab = m.api.this:GetID()
+function EpochMail.hook.MailFrameTab_OnClick( self, tab )
+  if type( self ) == "number" and tab == nil then
+    tab = self
+    self = m.api.this
+  elseif self == nil then
+    self = m.api.this
+  end
+
+  if not tab and self and self.GetID then
+    tab = self:GetID()
+  end
+
+  if tab and (not self or type( self ) == "number") then
+    self = m.api[ "MailFrameTab" .. tab ] or m.api.this
   end
 
   if tab == 3 then
+    deactivate_wrath_bag_hooks()
     m.api.PanelTemplates_SetTab( m.api.MailFrame, 3 )
     m.api.InboxFrame:Hide()
     m.api.SendMailFrame:Hide()
@@ -725,7 +847,15 @@ function EpochMail.hook.MailFrameTab_OnClick( tab )
     m.api.EpochMailLogFrame:Hide()
   end
 
-  m.orig.MailFrameTab_OnClick( tab )
+  if self ~= nil then
+    local result = m.orig.MailFrameTab_OnClick( self, tab )
+    sync_wrath_bag_hooks()
+    return result
+  end
+
+  local result = m.orig.MailFrameTab_OnClick( tab )
+  sync_wrath_bag_hooks()
+  return result
 end
 
 function EpochMail.hook.OpenMailFrame_OnHide()
@@ -752,11 +882,15 @@ function EpochMail.hook.OpenMailFrame_OnHide()
 end
 
 function EpochMail.hook.ContainerFrameItemButton_OnClick(button, ignoreModifiers)
-	if (button == "RightButton" and MailFrame and MailFrame:IsShown() and SendMailFrame:IsShown()) then
-		local frame = m.api.this
-		UseContainerItem(frame:GetParent():GetID(), frame:GetID())
-		return
-	end
+  if button == "RightButton" then
+    local frame = m.api.this
+    if frame and frame:GetParent() and frame:GetID() and frame:GetParent():GetID() then
+      if handle_bag_right_click( frame:GetParent():GetID(), frame:GetID() ) then
+        return
+      end
+    end
+  end
+
 	return m.orig.ContainerFrameItemButton_OnClick(button, ignoreModifiers)
 end
 
@@ -776,7 +910,6 @@ function EpochMail.send_mail_button_onclick()
     numMessages = math.max( 1, m.sendmail_num_attachments() ),
   }
 
-  m.sendmail_clear()
   m.sendmail_sending = true
   m.sendmail_send()
 end
@@ -815,41 +948,46 @@ function EpochMail.sendmail_load()
   m.api.SendMailMoneyCopper:SetPoint( "LEFT", m.api.SendMailMoneySilver, "RIGHT", 20, 0 )
   m.api.SendMailSendMoneyButton:SetPoint( "TOPLEFT", m.api.SendMailMoney, "TOPRIGHT", 0, 12 )
 
-  -- hack to avoid automatic subject setting and button disabling from weird blizzard code
+  -- The original TurtleMail proxies these globals on vanilla.
+  -- On Wrath/Epoch, keeping the real button/editbox objects is more reliable.
   MailMailButton = m.api.SendMailMailButton
-  m.api.SendMailMailButton = setmetatable( {}, { __index = function() return function() end end } )
-  m.api.SendMailMailButton_OnClick = m.send_mail_button_onclick
   MailSubjectEditBox = m.api.SendMailSubjectEditBox
-  m.api.SendMailSubjectEditBox = setmetatable( {}, {
-    __index = function( _, key )
-      return function( _, ... )
-        local args = pack( ... )
-        return MailSubjectEditBox[ key ]( MailSubjectEditBox, unpack( args ) )
-      end
-    end,
-  } )
+  if client >= 30000 then
+    MailMailButton:SetScript( "OnClick", m.send_mail_button_onclick )
+    m.api.SendMailMailButton_OnClick = m.send_mail_button_onclick
+  else
+    m.api.SendMailMailButton = setmetatable( {}, { __index = function() return function() end end } )
+    m.api.SendMailMailButton_OnClick = m.send_mail_button_onclick
+    m.api.SendMailSubjectEditBox = setmetatable( {}, {
+      __index = function( _, key )
+        return function( _, ... )
+          local args = pack( ... )
+          return MailSubjectEditBox[ key ]( MailSubjectEditBox, unpack( args ) )
+        end
+      end,
+    } )
+  end
 
   m.api.SendMailNameEditBox._SetText = m.api.SendMailNameEditBox.SetText
   function m.api.SendMailNameEditBox:SetText( ... )
-    if not m.api.EpochMail_To then
-      local args = pack( ... )
-      return self:_SetText( unpack( args ) )
-    end
+    local args = pack( ... )
+    return self:_SetText( unpack( args ) )
   end
 
   m.api.SendMailNameEditBox:SetScript( "OnShow", function( editbox )
-    if m.api.EpochMail_To then
+    if m.api.EpochMail_To and editbox:GetText() == "" then
       editbox:_SetText( m.api.EpochMail_To )
     end
   end )
   m.api.SendMailNameEditBox:SetScript( "OnChar", function()
     m.api.EpochMail_To = nil
-    GetSuggestions()
   end )
   m.api.SendMailNameEditBox:SetScript( "OnTabPressed", function()
     if m.api.MailAutoCompleteBox:IsVisible() then
       if m.api.IsShiftKeyDown() then
         m.previous_match()
+      elseif index and matches[ index ] and m.api.SendMailNameEditBox:GetText() ~= matches[ index ] then
+        complete()
       else
         m.next_match()
       end
@@ -887,7 +1025,11 @@ function EpochMail.sendmail_load()
       if text ~= formatted then
         editbox:SetText( formatted )
       end
-      return orig_script()
+      if orig_script then
+        orig_script()
+      end
+      m.api.EpochMail_To = nil
+      GetSuggestions()
     end )
   end
 
@@ -1016,6 +1158,7 @@ function EpochMail.sendmail_clear()
     m.api.PickupContainerItem( unpack( anyItem ) )
     m.api.ClearCursor()
   end
+  m.api.EpochMail_To = nil
   MailMailButton:Disable()
   m.api.SendMailNameEditBox:SetText ""
   m.api.SendMailNameEditBox:SetFocus()
@@ -1088,15 +1231,22 @@ do
   local inputLength
   local matches = {}
   local index
+  local function autocomplete_button( i )
+    local name = "MailAutoCompleteButton" .. i
+    return m.api[ name ] or (_G and _G[ name ])
+  end
 
   local function complete()
+    if not index or not matches[ index ] then
+      return
+    end
     m.api.SendMailNameEditBox:SetText( matches[ index ] )
     m.api.SendMailNameEditBox:HighlightText( inputLength, -1 )
     for i = 1, m.api.MAIL_AUTOCOMPLETE_MAX_BUTTONS do
-      local button = m.api[ "MailAutoCompleteButton" .. i ]
-      if i == index then
+      local button = autocomplete_button( i )
+      if button and i == index then
         button:LockHighlight()
-      else
+      elseif button then
         button:UnlockHighlight()
       end
     end
@@ -1120,31 +1270,41 @@ do
   function EpochMail.select_match( i )
     index = i
     complete()
+    m.api.EpochMail_To = m.api.SendMailNameEditBox:GetText()
     m.api.MailAutoCompleteBox:Hide()
     m.api.SendMailNameEditBox:HighlightText( 0, 0 )
   end
 
   function GetSuggestions()
     local input = m.api.SendMailNameEditBox:GetText()
+    if not input or input == "" then
+      m.api.MailAutoCompleteBox:Hide()
+      return
+    end
     inputLength = string.len( input )
+    local upper_input = string.upper( input )
 
-    ---@diagnostic disable-next-line: undefined-field
-    table.setn( matches, 0 )
+    matches = {}
     index = nil
 
     local autoCompleteNames = {}
-    for name, time in pairs( m.api.EpochMail_AutoCompleteNames[ m.api.GetCVar "realmName" .. "|" .. tostring(m.api.UnitFactionGroup "player") ] ) do
+    for name, time in pairs( m.api.EpochMail_AutoCompleteNames[ get_autocomplete_key() ] ) do
       table.insert( autoCompleteNames, { name = name, time = time } )
     end
     table.sort( autoCompleteNames, function( a, b ) return b.time < a.time end )
 
-    local ignore = { [ m.api.UnitName "player" ] = true }
+    local ignore = { [ string.upper( m.api.UnitName "player" ) ] = true }
+    local has_exact_match = false
     local function process( name )
       if name then
-        if not ignore[ name ] and string.find( string.upper( name ), string.upper( input ), nil, true ) == 1 then
+        local upper_name = string.upper( name )
+        if not ignore[ upper_name ] and string.find( upper_name, string.upper( input ), nil, true ) == 1 then
           table.insert( matches, name )
         end
-        ignore[ name ] = true
+        if upper_name == upper_input then
+          has_exact_match = true
+        end
+        ignore[ upper_name ] = true
       end
     end
     for _, t in ipairs( autoCompleteNames ) do
@@ -1157,24 +1317,45 @@ do
       process( m.api.GetGuildRosterInfo( i ) )
     end
 
-    ---@diagnostic disable-next-line: undefined-field
-    table.setn( matches, math.min( getn( matches ), m.api.MAIL_AUTOCOMPLETE_MAX_BUTTONS ) )
-    if getn( matches ) > 0 and (getn( matches ) > 1 or input ~= matches[ 1 ]) then
+    if not has_exact_match and inputLength > 0 then
+      table.insert( matches, 1, input )
+    end
+    while getn( matches ) > m.api.MAIL_AUTOCOMPLETE_MAX_BUTTONS do
+      table.remove( matches )
+    end
+    if getn( matches ) > 0 then
       for i = 1, m.api.MAIL_AUTOCOMPLETE_MAX_BUTTONS do
-        local button = m.api[ "MailAutoCompleteButton" .. i ]
-        if i <= getn( matches ) then
+        local button = autocomplete_button( i )
+        if button and i <= getn( matches ) then
+          local font_string = button:GetFontString()
           button:SetText( matches[ i ] )
-          button:GetFontString():SetPoint( "LEFT", button, "LEFT", 15, 0 )
+          if font_string then
+            if font_string.SetFontObject then
+              font_string:SetFontObject( m.api.GameFontNormal )
+            end
+            font_string:ClearAllPoints()
+            font_string:SetPoint( "LEFT", button, "LEFT", 15, 0 )
+            font_string:SetJustifyH( "LEFT" )
+            font_string:SetTextColor( 1, 1, 1, 1 )
+            font_string:Show()
+          end
           button:Show()
-        else
+        elseif button then
           button:Hide()
         end
       end
-      m.api.MailAutoCompleteBox:SetHeight( getn( matches ) * m.api.MailAutoCompleteButton1:GetHeight() + 35 )
+      local first_button = autocomplete_button( 1 )
+      local button_height = first_button and first_button:GetHeight() or 14
+      m.api.MailAutoCompleteBox:SetHeight( getn( matches ) * button_height + 35 )
       m.api.MailAutoCompleteBox:SetWidth( 120 )
       m.api.MailAutoCompleteBox:Show()
       index = 1
-      complete()
+      for i = 1, getn( matches ) do
+        local button = autocomplete_button( i )
+        if button then
+          button:UnlockHighlight()
+        end
+      end
     else
       m.api.MailAutoCompleteBox:Hide()
     end
@@ -1565,30 +1746,98 @@ function EpochMail.pfui_skin()
       m.pfui_skin_enabled = true
       local rawborder, border = m.api.pfUI.api.GetBorderSize()
       local bpad = rawborder > 1 and border - m.api.pfUI.api.GetPerfectPixel() or m.api.pfUI.api.GetPerfectPixel()
+      local strip = m.api.pfUI.api.StripTextures
+      local skin_button = m.api.pfUI.api.SkinButton
+      local skin_tab = m.api.pfUI.api.SkinTab
+      local create_backdrop = m.api.pfUI.api.CreateBackdrop
+      local skin_scrollbar = m.api.pfUI.api.SkinScrollbar
+      local handle_icon = m.api.pfUI.api.HandleIcon
+      local skin_money_input = m.api.pfUI.api.SkinMoneyInputFrame
+      local skin_close = m.api.pfUI.api.SkinCloseButton
+
+      strip( m.api.MailFrame, true )
+      create_backdrop( m.api.MailFrame, nil, nil, .75 )
+      if m.api.MailFrame.backdrop then
+        m.api.MailFrame.backdrop:SetPoint( "TOPLEFT", 12, -12 )
+        m.api.MailFrame.backdrop:SetPoint( "BOTTOMRIGHT", -30, 72 )
+      end
+      m.api.MailFrame:SetHitRectInsets( 12, 30, 12, 72 )
+      if m.api.InboxCloseButton then
+        skin_close( m.api.InboxCloseButton, m.api.MailFrame.backdrop, -6, -6 )
+      end
+
+      skin_tab( m.api.MailFrameTab1 )
+      skin_tab( m.api.MailFrameTab2 )
+      skin_tab( m.api.MailFrameTab3 )
+      m.api.MailFrameTab1:ClearAllPoints()
+      m.api.MailFrameTab1:SetPoint( "TOPLEFT", m.api.MailFrame.backdrop, "BOTTOMLEFT", bpad, -(border + (border == 1 and 1 or 2)) )
+      m.api.MailFrameTab2:ClearAllPoints()
+      m.api.MailFrameTab2:SetPoint( "LEFT", m.api.MailFrameTab1, "RIGHT", border * 2 + 1, 0 )
 
       --Inbox
-      m.api.pfUI.api.SkinButton( m.api.EpochMailOpenMailButton )
+      skin_button( m.api.EpochMailOpenMailButton )
+      if m.api.InboxTitleText then
+        m.api.InboxTitleText:ClearAllPoints()
+        m.api.InboxTitleText:SetPoint( "TOP", m.api.MailFrame.backdrop, "TOP", 0, -10 )
+      end
 
       --Sendmail
       m.api.MailHorizontalBarLeft:SetTexture( "" )
       m.api.MailHorizontalBarRight:SetTexture( "" )
+      if m.api.SendMailTitleText then
+        m.api.SendMailTitleText:ClearAllPoints()
+        m.api.SendMailTitleText:SetPoint( "TOP", m.api.MailFrame.backdrop, "TOP", 0, -10 )
+      end
+
+      strip( m.api.SendMailNameEditBox, nil, "BACKGROUND" )
+      create_backdrop( m.api.SendMailNameEditBox, nil, true )
+      strip( m.api.SendMailSubjectEditBox, nil, "BACKGROUND" )
+      create_backdrop( m.api.SendMailSubjectEditBox, nil, true )
+
+      skin_button( m.api.SendMailCancelButton )
+      skin_button( MailMailButton )
+      MailMailButton:ClearAllPoints()
+      MailMailButton:SetPoint( "RIGHT", m.api.SendMailCancelButton, "LEFT", -2 * bpad, 0 )
+
+      strip( m.api.SendMailFrame )
+      strip( m.api.SendMailScrollFrame )
+      create_backdrop( m.api.SendMailScrollFrame, nil, true )
+      skin_scrollbar( m.api.SendMailScrollFrameScrollBar )
+      skin_money_input( m.api.SendMailMoney )
+
+      local stationery_left, stationery_right = get_send_stationery_backgrounds()
+      if stationery_left then
+        stationery_left:SetDrawLayer( "BORDER" )
+        stationery_left:SetAllPoints()
+      end
+      if stationery_right then
+        stationery_right:Hide()
+      end
+
+      if m.api.MailAutoCompleteBox then
+        create_backdrop( m.api.MailAutoCompleteBox )
+      end
 
       for i = 1, 21 do
         local button = m.api[ "MailAttachment" .. i ]
-        m.api.pfUI.api.StripTextures( button )
-        m.api.pfUI.api.SkinButton( button, nil, nil, nil, nil, true )
+        strip( button )
+        skin_button( button, nil, nil, nil, nil, true )
         local orig = button.SetNormalTexture
         button.SetNormalTexture = function( self, tex )
           orig( self, tex )
 
           if button.item then
-            m.api.pfUI.api.HandleIcon( self, self:GetNormalTexture() )
+            handle_icon( self, self:GetNormalTexture() )
 
             local link = m.api.GetContainerItemLink( button.item[ 1 ], button.item[ 2 ] )
-            local _, _, linkstr = string.find( link, "(item:%d+:%d+:%d+:%d+)" )
-            local _, _, quality = m.api.GetItemInfo( linkstr )
-            local r, g, b = m.api.GetItemQualityColor( quality )
-            self:SetBackdropBorderColor( r, g, b, 1 )
+            if link then
+              local _, _, linkstr = string.find( link, "(item:%d+:%d+:%d+:%d+)" )
+              local _, _, quality = linkstr and m.api.GetItemInfo( linkstr ) or nil
+              local r, g, b = quality and m.api.GetItemQualityColor( quality ) or m.api.pfUI.api.GetStringColor( m.api.pfUI_config.appearance.border.color )
+              self:SetBackdropBorderColor( r, g, b, 1 )
+            else
+              self:SetBackdropBorderColor( m.api.pfUI.api.GetStringColor( m.api.pfUI_config.appearance.border.color ) )
+            end
           else
             self:SetBackdropBorderColor( m.api.pfUI.api.GetStringColor( m.api.pfUI_config.appearance.border.color ) )
           end
@@ -1596,14 +1845,13 @@ function EpochMail.pfui_skin()
       end
 
       --Log
-      m.api.pfUI.api.SkinTab( m.api.MailFrameTab3 )
       m.api.MailFrameTab3:ClearAllPoints()
       m.api.MailFrameTab3:SetPoint( "LEFT", m.api.MailFrameTab2, "RIGHT", border * 2 + 1, 0 )
 
       m.api.EpochMailLogTitleText:ClearAllPoints()
       m.api.EpochMailLogTitleText:SetPoint( "TOP", m.api.MailFrame.backdrop, "TOP", 0, -10 )
 
-      m.api.pfUI.api.CreateBackdrop( m.api.EpochMailLogScrollFrame )
+      create_backdrop( m.api.EpochMailLogScrollFrame )
 
       m.api.EpochMailLogScrollFrame:SetHeight( 307 )
       m.api.EpochMailLogScrollFrame:ClearAllPoints()
@@ -1613,17 +1861,17 @@ function EpochMail.pfui_skin()
       m.api.EpochMailLogEntriesFrame:SetPoint( "TOPLEFT", 23, -90 )
       m.api.EpochMailLogEntriesFrame:SetWidth( 299 )
 
-      m.api.pfUI.api.StripTextures( m.api.EpochMailLogItem10 )
-      m.api.pfUI.api.SkinScrollbar( m.api.EpochMailLogScrollFrameScrollBar )
+      strip( m.api.EpochMailLogItem10 )
+      skin_scrollbar( m.api.EpochMailLogScrollFrameScrollBar )
       m.api.EpochMailLogScrollFrameScrollBar:SetPoint( "TOPLEFT", m.api.EpochMailLogScrollFrame, "TOPRIGHT", 6, -14 )
       m.api.EpochMailLogScrollFrameScrollBar:SetPoint( "BOTTOMLEFT", m.api.EpochMailLogScrollFrame, "BOTTOMRIGHT", 6, 14 )
 
-      m.api.pfUI.api.SkinButton( m.api.EpochMailLogSentButton )
-      m.api.pfUI.api.SkinButton( m.api.EpochMailLogReceivedButton )
+      skin_button( m.api.EpochMailLogSentButton )
+      skin_button( m.api.EpochMailLogReceivedButton )
       m.api.EpochMailLogReceivedButton:ClearAllPoints()
       m.api.EpochMailLogReceivedButton:SetPoint( "RIGHT", m.api.EpochMailLogSentButton, "LEFT", -2 * bpad, 0 )
 
-      m.api.pfUI.api.SkinButton( m.api.EpochMailLogFiltersButton )
+      skin_button( m.api.EpochMailLogFiltersButton )
       m.api.EpochMailLogFiltersButton:SetPoint( "TOPLEFT", 21, -58 )
       m.api.EpochMailLogFiltersButton:GetFontString():SetFont( m.api.pfUI.font_default, 12 )
       m.api.EpochMailLogFiltersButton:GetFontString():SetPoint( "TOPLEFT", 4, -4.5 )
@@ -1634,8 +1882,8 @@ function EpochMail.pfui_skin()
       m.api.EpochMailLogFiltersButtonArrow:SetHeight( 8.5 )
       m.api.EpochMailLogFiltersButtonArrow:SetTexture( m.api.pfUI.media[ "img:down" ] )
 
-      m.api.pfUI.api.StripTextures( m.api.EpochMailLogStartTime )
-      m.api.pfUI.api.SkinButton( m.api.EpochMailLogStartTime )
+      strip( m.api.EpochMailLogStartTime )
+      skin_button( m.api.EpochMailLogStartTime )
       m.api.pfUI.api.SkinArrowButton( m.api.EpochMailLogStartTimeButton, "down", 16 )
       m.api.EpochMailLogStartTime:SetPoint( "TOPLEFT", 77, -58 )
       m.api.EpochMailLogStartTimeText:SetPoint( "LEFT", 5, 0 )
@@ -1644,8 +1892,8 @@ function EpochMail.pfui_skin()
       m.api.EpochMailLogStartTimeTitle:SetFont( m.api.pfUI.font_default, 10 )
       m.api.EpochMailLogStartTimeTitle:SetText( L[ "Period start" ] )
 
-      m.api.pfUI.api.StripTextures( m.api.EpochMailLogEndTime )
-      m.api.pfUI.api.SkinButton( m.api.EpochMailLogEndTime )
+      strip( m.api.EpochMailLogEndTime )
+      skin_button( m.api.EpochMailLogEndTime )
       m.api.pfUI.api.SkinArrowButton( m.api.EpochMailLogEndTimeButton, "down", 16 )
       m.api.EpochMailLogEndTime:SetPoint( "TOPLEFT", 163, -58 )
       m.api.EpochMailLogEndTimeText:SetPoint( "LEFT", 5, 0 )
