@@ -16,6 +16,8 @@ local function get_autocomplete_key()
   return tostring( m.api.GetCVar( "realmName" ) )
 end
 
+local active_bag_hook_names
+
 local function migrate_autocomplete_names()
   local realm_key = get_autocomplete_key()
   local realm_prefix = realm_key .. "|"
@@ -38,10 +40,9 @@ local function migrate_autocomplete_names()
 end
 
 local function activate_wrath_bag_hooks()
-  if client >= 30000 then return end
-  if m.wrath_bag_hooks_active then return end
+  if client < 30000 or m.wrath_bag_hooks_active then return end
 
-  for _, hook_name in ipairs( { "UseContainerItem", "ContainerFrameItemButton_OnClick", "PickupContainerItem", "SplitContainerItem", "GetContainerItemInfo" } ) do
+  for _, hook_name in ipairs( active_bag_hook_names() ) do
     if m.hooks[ hook_name ] and m.orig[ hook_name ] then
       m.api[ hook_name ] = m.hooks[ hook_name ]
     end
@@ -51,10 +52,9 @@ local function activate_wrath_bag_hooks()
 end
 
 local function deactivate_wrath_bag_hooks()
-  if client >= 30000 then return end
-  if not m.wrath_bag_hooks_active then return end
+  if client < 30000 or not m.wrath_bag_hooks_active then return end
 
-  for _, hook_name in ipairs( { "UseContainerItem", "ContainerFrameItemButton_OnClick", "PickupContainerItem", "SplitContainerItem", "GetContainerItemInfo" } ) do
+  for _, hook_name in ipairs( active_bag_hook_names() ) do
     if m.orig[ hook_name ] then
       m.api[ hook_name ] = m.orig[ hook_name ]
     end
@@ -72,15 +72,53 @@ local function send_mail_tab_active()
 end
 
 local function sync_wrath_bag_hooks()
-  if client >= 30000 then
-    m.wrath_bag_hooks_active = false
-    return
-  end
+  if client < 30000 then return end
   if send_mail_tab_active() then
     activate_wrath_bag_hooks()
   else
     deactivate_wrath_bag_hooks()
   end
+end
+
+active_bag_hook_names = function()
+  return { "UseContainerItem", "ContainerFrameItemButton_OnClick", "PickupContainerItem", "SplitContainerItem", "GetContainerItemInfo" }
+end
+
+local function hide_blizzard_container_frames()
+  local num_frames = m.api.NUM_CONTAINER_FRAMES or 13
+  for i = 1, num_frames do
+    local frame = m.api[ "ContainerFrame" .. i ]
+    if frame and frame:IsShown() then
+      frame:Hide()
+    end
+  end
+end
+
+local function suppress_bag_open_calls()
+  if m._bag_open_suppressed then
+    m._bag_open_suppression_frames = 10
+    return
+  end
+
+  m._bag_open_suppressed = true
+  m._bag_open_suppression_frames = 10
+  m._bag_open_orig = m._bag_open_orig or {}
+  for _, name in ipairs( { "OpenBackpack", "OpenAllBags", "ToggleBackpack" } ) do
+    m._bag_open_orig[ name ] = m._bag_open_orig[ name ] or m.api[ name ]
+    m.api[ name ] = function() end
+  end
+end
+
+local function restore_bag_open_calls()
+  if not m._bag_open_suppressed then return end
+
+  for _, name in ipairs( { "OpenBackpack", "OpenAllBags", "ToggleBackpack" } ) do
+    if m._bag_open_orig and m._bag_open_orig[ name ] then
+      m.api[ name ] = m._bag_open_orig[ name ]
+    end
+  end
+  m._bag_open_suppressed = nil
+  m._bag_open_suppression_frames = nil
 end
 
 local ATTACHMENTS_MAX = 21
@@ -191,6 +229,15 @@ end
 function EpochMail.on_update()
   if not m.api.MailFrame or not m.api.MailFrame:IsVisible() then return end
 
+  hide_blizzard_container_frames()
+
+  if m._bag_open_suppression_frames and m._bag_open_suppression_frames > 0 then
+    m._bag_open_suppression_frames = m._bag_open_suppression_frames - 1
+    if m._bag_open_suppression_frames == 0 then
+      restore_bag_open_calls()
+    end
+  end
+
   if m._cursorItem then
     m.debug( "on_update: cursorItem" )
     m.cursorItem = m._cursorItem
@@ -252,6 +299,7 @@ function EpochMail.BAG_UPDATE()
 end
 
 function EpochMail.MAIL_SHOW()
+  suppress_bag_open_calls()
   sync_wrath_bag_hooks()
 
   if m.api.EpochMail_Point then
@@ -289,6 +337,7 @@ function EpochMail.MAIL_SHOW()
 end
 
 function EpochMail.MAIL_CLOSED()
+  restore_bag_open_calls()
   deactivate_wrath_bag_hooks()
   m.inbox_abort()
   m.sendmail_sending = false
