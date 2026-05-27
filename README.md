@@ -1,26 +1,77 @@
-# EpochMail - Epoch 3.3.5 addOn
+<p align="center">
+  <img src="Images/Logo.svg" width="204" alt="Epoch-mail">
+</p>
 
-Ported for Epoch by Fragglechen.
+**A Classic WOTLK WoW 3.3.5 (and Project Epoch WoW) mail addon for easy open of mails or sending multiple items.**<br><sup>Not for Retail.</sup>
 
-Special thanks to shirsig/sica, the original TurtleMail addon authors.
+<h4><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Images/Screenshot_1.png">
+  <img alt="EpochMail Screenshot 1" src="Images/Screenshot_1.png" width="49%">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Images/Screenshot_2.png">
+  <img alt="EpochMail Screenshot 2" src="Images/Screenshot_2.png" width="49%">
+</picture><br>
 
-An extension to the Blizzard mail interface which
-- **Automatically opens mail, very rapidly**
-- **Mails multiple items at once, very rapidly**
-- **Autocompletes recipient names**
-- **Icons to show if mail was returned or is from AH**
-- **Shows collected gold from opened mails**
-- **Apply COD to 1st or all mails**
-- **Logging of all sent and received mails**
+<a href="https://www.paypal.com/donate/?hosted_button_id=REDPFJ9YSQBUW">
+  <img src="Images/paypal-donate-button.png" alt="Donate with PayPal" width="180" />
+</a>
 
-**\<Right Click>** on inbox items to loot the gold, loot the item and destroy the letter, in that order, if any.<br/>
-**\<Right Click>** or **\<Left Drag>** to add inventory items to the attachments.<br/>
-**\<Right Click>** to add inventory items to the trade frame.
+Ported for Epoch by **Fragglechen**.  
+Special thanks to **shirsig/sica**, the original TurtleMail addon authors.
 
-Note that COD is always ignored when opening, both automatically as well as by **\<Right Click>**.
+## Features
 
-Logging is disabled by default. Enable with `/tm log` command
+* Rapid mailbox handling for opening many mails in sequence.
+* Open all mail support with fast collection of attachments and money.
+* Multi-item sending with custom attachment slots.
+* Recipient autocomplete with remembered character names.
+* Inbox markers for Auction House mail and returned mail.
+* Quick right-click inbox actions for money, items, and cleanup.
+* Gold summary for collected inbox money.
+* C.O.D. support for one or all selected mails.
+* Sent and received mail logging.
+* pfUI skin support for the custom mail interface.
 
-![Alt text](https://i.imgur.com/H0MUmXd.png)
+## Documentation
 
-![Alt text](https://i.imgur.com/LM7tRcx.png)
+⬇️ [Installation](#installation)
+
+## Installation
+
+### Easy mode (recommended)
+
+Use [EpochAddonUpdater](https://github.com/Fragglechen/EpochAddonUpdater).  
+<sup>Or any tool that supports Git-based addon updates.</sup>
+
+### Manual
+
+1. [Download EpochMail](https://github.com/Fragglechen/EpochMail/releases/latest).
+2. Extract the zip file.
+3. Ensure the resulting folder is named `EpochMail`.
+4. Move that folder to `[Path\To\WoW]\Interface\AddOns`.
+5. Ensure the structure is `Interface\AddOns\EpochMail\EpochMail.toc`.  
+   <sup>*These are all **wrong**:*  
+   × `EpochMail\EpochMail\EpochMail.toc`  
+   × `EpochMail-main\EpochMail.toc`  
+   × `EpochMail\EpochMail-main\EpochMail.toc`
+   </sup>
+
+## Usage
+
+* **Right-click** inbox entries to loot money, loot items, and delete the message in that order, when applicable.
+* **Right-click** or **left-drag** inventory items onto attachments while composing mail.
+* **Right-click** to add inventory items to the trade frame.
+* C.O.D. is always ignored when opening mail, both automatically and via **right-click**.
+* Logging is disabled by default and can be enabled with `/tm log`.
+
+## Compatibility
+
+### Interface replacement
+
+* [pfUI](https://github.com/Fragglechen/pfUI/) skin  
+<sup>Manage in **pfUI Config** (`/pfui`) > **Components** > **Skins**</sup>
+
+## Credits
+
+EpochMail is based on TurtleMail by **shirsig/sica**, with Project Epoch porting and compatibility work by **Fragglechen**.

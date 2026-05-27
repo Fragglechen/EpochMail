@@ -121,6 +121,39 @@ local function restore_bag_open_calls()
   m._bag_open_suppression_frames = nil
 end
 
+local function apply_pfui_open_mail_button_skin()
+  if not (m.pfui_skin_enabled and m.api.EpochMailOpenMailButton and m.api.pfUI and m.api.pfUI.api) then
+    return
+  end
+
+  local strip = m.api.pfUI.api.StripTextures
+  local skin_button = m.api.pfUI.api.SkinButton
+  local btn = m.api.EpochMailOpenMailButton
+
+  strip( btn )
+  skin_button( btn )
+
+  if btn.GetNormalTexture and btn:GetNormalTexture() then
+    btn:GetNormalTexture():SetTexture( nil )
+  end
+  if btn.GetPushedTexture and btn:GetPushedTexture() then
+    btn:GetPushedTexture():SetTexture( nil )
+  end
+  if btn.GetHighlightTexture and btn:GetHighlightTexture() then
+    btn:GetHighlightTexture():SetTexture( nil )
+  end
+  if btn.GetDisabledTexture and btn:GetDisabledTexture() then
+    btn:GetDisabledTexture():SetTexture( nil )
+  end
+
+  if not btn._epochmail_pfui_skin_hooked then
+    btn._epochmail_pfui_skin_hooked = true
+    btn:HookScript( "OnShow", apply_pfui_open_mail_button_skin )
+    btn:HookScript( "OnEnable", apply_pfui_open_mail_button_skin )
+    btn:HookScript( "OnDisable", apply_pfui_open_mail_button_skin )
+  end
+end
+
 local ATTACHMENTS_MAX = 21
 local ATTACHMENTS_PER_ROW_SEND = 7
 local ATTACHMENTS_MAX_ROWS_SEND = 3
@@ -301,6 +334,7 @@ end
 function EpochMail.MAIL_SHOW()
   suppress_bag_open_calls()
   sync_wrath_bag_hooks()
+  apply_pfui_open_mail_button_skin()
 
   if m.api.EpochMail_Point then
     m.debug( "Set point" )
@@ -465,12 +499,30 @@ end
 
 function EpochMail.inbox_load()
   m.api.InboxFrame:EnableMouse( false )
-  local btn = m.api.CreateFrame( "Button", "EpochMailOpenMailButton", m.api.InboxFrame, "UIPanelButtonTemplate" )
+  local btn = m.api.CreateFrame( "Button", "EpochMailOpenMailButton", m.api.InboxFrame )
   btn:SetPoint( "BOTTOM", -10, 90 )
+  btn.text = btn:CreateFontString( nil, "OVERLAY", "GameFontNormal" )
+  btn.text:SetAllPoints()
+  btn.text:SetJustifyH( "CENTER" )
+  btn.text:SetJustifyV( "MIDDLE" )
+  btn.SetText = function( self, text ) self.text:SetText( text ) end
+  btn.GetText = function( self ) return self.text:GetText() end
   btn:SetText( m.api.OPENMAIL )
-  btn:SetWidth( math.max( 120, 30 + ({ btn:GetRegions() })[ 1 ]:GetStringWidth() ) )
+  btn:SetWidth( 160 )
   btn:SetHeight( 25 )
   btn:SetScript( "OnClick", m.inbox_open_all )
+
+  if m.api.pfUI and m.api.pfUI.api then
+    m.api.pfUI.api.SkinButton( btn )
+  else
+    btn:SetNormalTexture( "" )
+    btn:SetHighlightTexture( "" )
+    btn:SetPushedTexture( "" )
+    btn:SetDisabledTexture( "" )
+    if m.api.CreateBackdrop then
+      m.api.CreateBackdrop( btn )
+    end
+  end
 
   for i = 1, 7 do
     m.api[ "EpochMailAuctionIcon" .. i .. "Texture" ]:SetVertexColor( m.api.NORMAL_FONT_COLOR.r, m.api.NORMAL_FONT_COLOR.g, m.api.NORMAL_FONT_COLOR.b )
@@ -1829,7 +1881,7 @@ function EpochMail.pfui_skin()
       m.api.MailFrameTab2:SetPoint( "LEFT", m.api.MailFrameTab1, "RIGHT", border * 2 + 1, 0 )
 
       --Inbox
-      skin_button( m.api.EpochMailOpenMailButton )
+      apply_pfui_open_mail_button_skin()
       if m.api.InboxTitleText then
         m.api.InboxTitleText:ClearAllPoints()
         m.api.InboxTitleText:SetPoint( "TOP", m.api.MailFrame.backdrop, "TOP", 0, -10 )
