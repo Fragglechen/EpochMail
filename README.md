@@ -75,13 +75,14 @@ Use [EpochAddonUpdater](https://github.com/Fragglechen/EpochAddonUpdater).
 <td>
 
 ### Auction and Mail
-<sup>Mailbox and Auction House workflow</sup>
+<sup>Right-click/Alt+click attach</sup>
 
 </td>
 <td>
 
 * Blizzard UI
 * [aux](https://github.com/Fragglechen/aux-addon-epoch)
+* [Mail](https://github.com/Fragglechen/EpochMail)
 
 </td>
 </tr>
@@ -90,14 +91,13 @@ Use [EpochAddonUpdater](https://github.com/Fragglechen/EpochAddonUpdater).
 <tr>
 <td>
 
-### Bags and Inventory
-<sup>Sending multiple items</sup>
+### Cooldown counts
 
 </td>
 <td>
 
-* Blizzard Bags
-* [Bagshui-epoch](https://github.com/Fragglechen/Bagshui-epoch)
+* [OmniCC](https://felbite.com/addon/4773-omnicc/)
+* [pfUI](https://github.com/Fragglechen/pfUI/)
 
 </td>
 </tr>
@@ -113,6 +113,36 @@ Use [EpochAddonUpdater](https://github.com/Fragglechen/EpochAddonUpdater).
 
 * [pfUI](https://github.com/Fragglechen/pfUI/) skin  
 <sup>Manage in **pfUI Config** (`/pfui`) > **Components** > **Skins**</sup>
+
+</td>
+</tr>
+
+
+<tr>
+<td>
+
+### [Rule functions]
+
+</td>
+<td>
+
+* `Outfit()` - [ItemRack](https://github.com/Defcons/epoch-addons/releases/tag/ItemRack-v1.0) and [Outfitter](https://www.curseforge.com/wow/addons/outfitter-retrofit)
+* `Wishlist()` - [AtlasLoot](https://github.com/reneas/AtlaslootProjectEpoch)
+
+</td>
+</tr>
+
+
+<tr>
+<td>
+
+### T- Mog
+
+</td>
+<td>
+
+* **Guild Bank** right-click to deposit.
+* [Tmog](https://github.com/Fragglechen/Tmog-epoch).
 
 </td>
 </tr>
