@@ -67,10 +67,57 @@ Use [EpochAddonUpdater](https://github.com/Fragglechen/EpochAddonUpdater).
 
 ## Compatibility
 
+### Functionality
+
+<table>
+
+<tr>
+<td>
+
+### Auction and Mail
+<sup>Mailbox and Auction House workflow</sup>
+
+</td>
+<td>
+
+* Blizzard UI
+* [aux](https://github.com/Fragglechen/aux-addon-epoch)
+
+</td>
+</tr>
+
+
+<tr>
+<td>
+
+### Bags and Inventory
+<sup>Sending multiple items</sup>
+
+</td>
+<td>
+
+* Blizzard Bags
+* [Bagshui-epoch](https://github.com/Fragglechen/Bagshui-epoch)
+
+</td>
+</tr>
+
+
+<tr>
+<td>
+
 ### Interface replacement
+
+</td>
+<td>
 
 * [pfUI](https://github.com/Fragglechen/pfUI/) skin  
 <sup>Manage in **pfUI Config** (`/pfui`) > **Components** > **Skins**</sup>
+
+</td>
+</tr>
+
+</table>
 
 ### Languages
 
