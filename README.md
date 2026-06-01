@@ -72,6 +72,22 @@ Use [EpochAddonUpdater](https://github.com/Fragglechen/EpochAddonUpdater).
 * [pfUI](https://github.com/Fragglechen/pfUI/) skin  
 <sup>Manage in **pfUI Config** (`/pfui`) > **Components** > **Skins**</sup>
 
+### Languages
+
+If EpochMail has not been localized for your client, some interface text may remain untranslated. Please consider contributing a translation if you'd like to improve support for your locale.
+
+* English (enUS)
+* German (deDE)
+* Spanish (esES)
+* French (frFR)
+* Russian (ruRU)
+
+## Donations
+Developing EpochMail is fun, but also a lot of work! Your support is hugely appreciated.  
+<a href="https://www.paypal.com/donate/?hosted_button_id=REDPFJ9YSQBUW">
+  <img src="Images/paypal-donate-button.png" alt="Donate with PayPal" width="180" />
+</a>
+
 ## Credits
 
 EpochMail is based on TurtleMail by **shirsig/sica**, with Project Epoch porting and compatibility work by **Fragglechen**.
